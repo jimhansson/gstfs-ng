@@ -15,44 +15,6 @@ struct pipe_params
     void *user_data;
 };
 
-
-/*                
-static gboolean bus_call (GstBus *bus, GstMessage *msg, gpointer data)
-{
-    gchar  *debug;
-    GError *error;
-    done_cb_t callback = (done_cb_t) data;
-
-    switch (GST_MESSAGE_TYPE (msg)) {
-
-        case GST_MESSAGE_EOS:
-            g_main_loop_quit (loop);
-            break;
-
-        case GST_MESSAGE_ERROR:
-            gst_message_parse_error (msg, &error, &debug);
-            g_free (debug);
-
-            g_printerr ("Error: %s\n", error->message);
-            g_error_free (error);
-
-            g_main_loop_quit (loop);
-            break;
-
-        default:
-            break;
-    }
-    return TRUE;
-}
-*/
-
-void close_pipe(void *data)
-{
-    int fd = (int) data;
-    printf("close pipe! %d\n", fd);
-    close(fd);
-}
-
 void *send_pipe(void *data)
 {
     struct pipe_params *param = (struct pipe_params *) data;
