@@ -75,7 +75,10 @@ int transcode(char *filename, void (*add_data_cb)(char *, size_t, void *),
     GstElement *pipeline, *source, *dest;
     GError *error = NULL;
     GstBus *bus;
-    char *pipeline_str = "filesrc name=\"_source\" ! oggdemux ! vorbisdec ! audioconvert ! wavenc ! fdsink name=\"_dest\" sync=false";
+    char *pipeline_str = "filesrc name=\"_source\" ! oggdemux ! " 
+        "vorbisdec ! audioconvert ! lame bitrate=160 ! " 
+        "fdsink name=\"_dest\" sync=false";
+
     int pipefds[2];
 
     struct pipe_params thread_params;
@@ -122,7 +125,7 @@ int transcode(char *filename, void (*add_data_cb)(char *, size_t, void *),
 
     // close read-side so pipe will terminate
     close(pipefds[1]);
-    pthread_join(&thread, thread_status);
+    pthread_join(thread, thread_status);
 
     return 0;
 }
