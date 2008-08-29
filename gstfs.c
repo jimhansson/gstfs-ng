@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <fuse.h>
 #include <errno.h>
 #include <glib.h>
@@ -16,6 +17,9 @@
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
 
+#define GSTFS_OPT_KEY(templ, elem, key) \
+    { templ, offsetof(struct gstfs_mount_info, elem), key }
+
 /* per-mount options and data structures */
 struct gstfs_mount_info
 {
@@ -23,31 +27,41 @@ struct gstfs_mount_info
     GHashTable *file_cache;      /* cache of transcoded audio */
     GQueue *cache_lru;           /* queue of items in LRU order */
     int max_cache_entries;       /* max # of entries in the cache */
-    char *source_mount;          /* directory we are mirroring */
+    char *src_mnt;               /* directory we are mirroring */
     char *src_ext;               /* extension of files we transcode */
-    char *dest_ext;              /* extension of target files */
+    char *dst_ext;               /* extension of target files */
+    char *pipeline;              /* gstreamer pipeline */
 };
 
 /* This stuff is stored into file_cache by filename */
 struct gstfs_file_info
 {
     char *filename;           /* hash key */
-    char *source_filename;    /* filename in other mount */
+    char *src_filename;       /* filename in other mount */
     pthread_mutex_t mutex;    /* protects this file info */
     size_t len;               /* size of file */
     size_t alloc_len;         /* allocated size of buf */
     char *buf;                /* completely converted file */
     GList *list_node;         /* pointer for cache_lru */
 };
-
+static char *get_source_path(const char *filename);
 
 static struct gstfs_mount_info mount_info;
 
-static char *get_source_path(const char *filename);
+void usage(const char *prog)
+{
+    printf("Usage: %s -o [options] mount_point\n\n"
+           "where options can be:\n"
+           "   src=[source directory]    (required)\n"
+           "   src_ext=[mp3|ogg|...]     (required)\n"
+           "   dst_ext=[mp3|ogg|...]     (required)\n"
+           "   pipeline=[gst pipeline]   (required)\n"
+           "   ncache=[0-9]*             (optional)\n",
+           prog);
+}
 
 /*
- *  Create a new gstfs_file_info object using the specified destination
- *  filename.
+ *  Create a new gstfs_file_info object using the specified destination file.
  */
 struct gstfs_file_info *get_file_info(const char *filename)
 {
@@ -55,18 +69,18 @@ struct gstfs_file_info *get_file_info(const char *filename)
 
     fi = calloc(1, sizeof(struct gstfs_file_info));
     fi->filename = g_strdup(filename);
-    fi->source_filename = get_source_path(filename);
+    fi->src_filename = get_source_path(filename);
     pthread_mutex_init(&fi->mutex, NULL);
     return fi;
 }
 
 /*
- *  Release a previously allocated gstfs_file_info object
+ *  Release a previously allocated gstfs_file_info object.
  */
 void put_file_info(struct gstfs_file_info *fi)
 {
     g_free(fi->filename);
-    g_free(fi->source_filename);
+    g_free(fi->src_filename);
     free(fi);
 }
 
@@ -86,12 +100,12 @@ char *replace_ext(char *filename, char *search, char *replace)
 }
 
 /*
- *  Return true if filename has extension dest_ext
+ *  Return true if filename has extension dst_ext.
  */
 int is_target_type(const char *filename)
 {
     char *ext = strrchr(filename, '.');
-    return (ext && strcmp(ext+1, mount_info.dest_ext) == 0);
+    return (ext && strcmp(ext+1, mount_info.dst_ext) == 0);
 }
 
 /*  
@@ -161,8 +175,8 @@ static char *get_source_path(const char *filename)
 {
     char *source;
 
-    source = g_strdup_printf("%s%s", mount_info.source_mount, filename);
-    source = replace_ext(source, mount_info.dest_ext, mount_info.src_ext);
+    source = g_strdup_printf("%s%s", mount_info.src_mnt, filename);
+    source = replace_ext(source, mount_info.dst_ext, mount_info.src_ext);
     return source;
 }
 
@@ -226,7 +240,7 @@ int gstfs_read(const char *path, char *buf, size_t size, off_t offset,
     pthread_mutex_lock(&info->mutex);
 
     if (!info->buf)
-        transcode(info->source_filename, read_cb, info);
+        transcode(info->src_filename, read_cb, info);
     
     if (info->len <= offset)
         goto out;
@@ -250,7 +264,7 @@ int gstfs_open(const char *path, struct fuse_file_info *fi)
 }
 
 /*
- *  copy all entries from source mount
+ *  Copy all entries from source mount, replacing extensions along the way.
  */
 int gstfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     off_t offset, struct fuse_file_info *fi)
@@ -268,7 +282,7 @@ int gstfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     while ((dirent = readdir(dir)))
     {
         char *s = g_strdup(dirent->d_name);
-        s = replace_ext(s, mount_info.src_ext, mount_info.dest_ext);
+        s = replace_ext(s, mount_info.src_ext, mount_info.dst_ext);
         filler(buf, s, NULL, 0);
 
         g_free(s);
@@ -278,7 +292,7 @@ int gstfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     return 0;
 }
 
-static struct fuse_operations gstfs_ops = {
+static struct fuse_operations gstfs_opers = {
     .readdir = gstfs_readdir,
     .statfs = gstfs_statfs,
     .getattr = gstfs_getattr,
@@ -286,16 +300,39 @@ static struct fuse_operations gstfs_ops = {
     .read = gstfs_read
 };
 
+static struct fuse_opt gstfs_opts[] = {
+    GSTFS_OPT_KEY("src=%s", src_mnt, 0),
+    GSTFS_OPT_KEY("src_ext=%s", src_ext, 0),
+    GSTFS_OPT_KEY("dst_ext=%s", dst_ext, 0),
+    GSTFS_OPT_KEY("ncache=%d", max_cache_entries, 0),
+    GSTFS_OPT_KEY("pipeline=%s", pipeline, 0),
+    FUSE_OPT_END
+};
+
+
 int main(int argc, char *argv[])
 {
+    struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+
+    if (fuse_opt_parse(&args, &mount_info, gstfs_opts, NULL) == -1)
+        return -1;
+
+    if (!mount_info.src_mnt ||
+        !mount_info.src_ext ||
+        !mount_info.dst_ext ||
+        !mount_info.pipeline)
+    {
+        usage(argv[0]);
+        return -1;
+    }
+
+    if (mount_info.max_cache_entries == 0)
+        mount_info.max_cache_entries = 50;
+
     pthread_mutex_init(&mount_info.cache_mutex, NULL);
     mount_info.file_cache = g_hash_table_new(g_str_hash, g_str_equal);
     mount_info.cache_lru = g_queue_new();
-    mount_info.max_cache_entries = 50;
-    mount_info.source_mount = "ogg";
-    mount_info.src_ext = "ogg";
-    mount_info.dest_ext = "mp3";
 
     gst_init(&argc, &argv);
-    return fuse_main(argc, argv, &gstfs_ops, NULL);
+    return fuse_main(args.argc, args.argv, &gstfs_opers, NULL);
 }
