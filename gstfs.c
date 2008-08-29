@@ -3,43 +3,58 @@
  */
 #include <sys/types.h>
 #include <dirent.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <fuse.h>
 #include <errno.h>
 #include <glib.h>
-#include <printf.h>
 #include <gst/gst.h>
 #include "xcode.h"
 
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
 
-static GHashTable *file_cache;
+/* protects file_cache, cache_lru accesses */
+static pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER; 
+static GHashTable *file_cache;      /* cache of transcoded audio */
+static GQueue *cache_lru;           /* queue of items in LRU order */
+static int max_cache_entries = 50;
+
 static char *get_source_path(const char *filename);
 
 char *source_mount = "ogg";
 char *src_ext = "ogg", *dest_ext = "mp3";
 
-// This stuff is stored into a hash table blah blah
-struct file_info
+/* This stuff is stored into file_cache by filename */
+struct gst_file_info
 {
     char *filename;           /* hash key */
     char *source_filename;    /* filename in other mount */
+    pthread_mutex_t mutex;    /* protects this file info */
     size_t len;               /* size of file */
     size_t alloc_len;         /* allocated size of buf */
     char *buf;                /* completely converted file */
+    GList *list_node;         /* pointer for cache_lru */
 };
 
-struct file_info *new_file_info(const char *filename)
+struct gst_file_info *get_file_info(const char *filename)
 {
-    struct file_info *fi;
+    struct gst_file_info *fi;
 
-    fi = calloc(1, sizeof(struct file_info));
-    fi->filename = strdup(filename);
+    fi = calloc(1, sizeof(struct gst_file_info));
+    fi->filename = g_strdup(filename);
     fi->source_filename = get_source_path(filename);
+    pthread_mutex_init(&fi->mutex, NULL);
     return fi;
+}
+
+void put_file_info(struct gst_file_info *fi)
+{
+    g_free(fi->filename);
+    g_free(fi->source_filename);
+    free(fi);
 }
 
 char *replace_ext(char *filename, char *search, char *replace)
@@ -59,29 +74,61 @@ int is_target_type(const char *filename)
     return (ext && strcmp(ext+1, dest_ext) == 0);
 }
 
+/*  
+ *  Remove items from the file cache until below the maximum.
+ *  This is relatively quick since we can find elements by looking at the
+ *  head of the lru list and then do a single hash lookup to remove from 
+ *  the hash table.
+ *
+ *  Called with cache_mutex held.
+ */
+static void expire_cache()
+{
+    struct gst_file_info *fi;
+
+    while (g_queue_get_length(cache_lru) > max_cache_entries)
+    {
+        fi = (struct gst_file_info *) g_queue_pop_head(cache_lru);
+        g_hash_table_remove(file_cache, fi);
+        put_file_info(fi);
+    }
+}
+
 /*
  *  If the path represents a file in the mirror filesystem, then
  *  look for it in the cache.  If not, create a new file info.
  *
  *  If it isn't a mirror file, return NULL.
  */
-static struct file_info *gstfs_lookup(const char *path)
+static struct gst_file_info *gstfs_lookup(const char *path)
 {
-    struct file_info *ret;
+    struct gst_file_info *ret;
 
     if (!is_target_type(path))
         return NULL;
 
+    pthread_mutex_lock(&cache_mutex);
     ret = g_hash_table_lookup(file_cache, path);
     if (!ret)
     {
-	ret = new_file_info(path);
-	if (!ret)
-	    goto out;
+        ret = get_file_info(path);
+        if (!ret)
+            goto out;
 
         g_hash_table_replace(file_cache, ret->filename, ret);
     }
+
+    // move to end of LRU
+    if (ret->list_node)
+        g_queue_unlink(cache_lru, ret->list_node);
+
+    g_queue_push_tail(cache_lru, ret);
+    ret->list_node = cache_lru->tail;
+
+    expire_cache();
+
 out:
+    pthread_mutex_unlock(&cache_mutex);
     return ret;
 }
 
@@ -89,11 +136,8 @@ static char *get_source_path(const char *filename)
 {
     char *source;
 
-    printf("filename: %s\n", filename);
-
     source = g_strdup_printf("%s%s", source_mount, filename);
     source = replace_ext(source, dest_ext, src_ext);
-    printf("-> source filename: %s\n", source);
     return source;
 }
 
@@ -113,17 +157,14 @@ int gstfs_getattr(const char *path, struct stat *stbuf)
 {
     int ret = 0;
     char *source_path;
-    struct file_info *converted;
+    struct gst_file_info *converted;
 
     source_path = get_source_path(path);
 
-    printf("in gettattr, foo\n");
     if (stat(source_path, stbuf))
-       ret = -errno;
+        ret = -errno;
     else if ((converted = gstfs_lookup(path)))
-    {
-       stbuf->st_size = converted->len;
-    }
+        stbuf->st_size = converted->len;
 
     g_free(source_path);
     return ret;
@@ -131,7 +172,7 @@ int gstfs_getattr(const char *path, struct stat *stbuf)
 
 static int read_cb(char *buf, size_t size, void *data)
 {
-    struct file_info *info = (struct file_info *) data;
+    struct gst_file_info *info = (struct gst_file_info *) data;
 
     size_t newsz = info->len + size;
    
@@ -151,35 +192,40 @@ static int read_cb(char *buf, size_t size, void *data)
 int gstfs_read(const char *path, char *buf, size_t size, off_t offset, 
     struct fuse_file_info *fi)
 {
-    struct file_info *info = gstfs_lookup(path);
-    size_t count;
+    struct gst_file_info *info = gstfs_lookup(path);
+    size_t count = 0;
 
     if (!info)
         return -ENOENT;
+
+    pthread_mutex_lock(&info->mutex);
 
     if (!info->buf)
         transcode(info->source_filename, read_cb, info);
     
     if (info->len <= offset)
-        return 0;
+        goto out;
 
     count = min(info->len - offset, size);
 
     memcpy(buf, &info->buf[offset], count);
+
+out:
+    pthread_mutex_unlock(&info->mutex);
     return count;
 }
 
 int gstfs_open(const char *path, struct fuse_file_info *fi)
 {
-    struct file_info *info = gstfs_lookup(path);
+    struct gst_file_info *info = gstfs_lookup(path);
     if (!info)
         return -ENOENT;
 
     return 0;
 }
 
-/**
- *  readdir - copy all entries from source mount
+/*
+ *  copy all entries from source mount
  */
 int gstfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     off_t offset, struct fuse_file_info *fi)
@@ -217,8 +263,9 @@ static struct fuse_operations gstfs_ops = {
 
 int main(int argc, char *argv[])
 {
-    gst_init (&argc, &argv);
     file_cache = g_hash_table_new(g_str_hash, g_str_equal);
+    cache_lru = g_queue_new();
 
+    gst_init(&argc, &argv);
     return fuse_main(argc, argv, &gstfs_ops, NULL);
 }
