@@ -45,7 +45,10 @@ static struct gstfs_mount_info mount_info;
 
 static char *get_source_path(const char *filename);
 
-
+/*
+ *  Create a new gstfs_file_info object using the specified destination
+ *  filename.
+ */
 struct gstfs_file_info *get_file_info(const char *filename)
 {
     struct gstfs_file_info *fi;
@@ -57,6 +60,9 @@ struct gstfs_file_info *get_file_info(const char *filename)
     return fi;
 }
 
+/*
+ *  Release a previously allocated gstfs_file_info object
+ */
 void put_file_info(struct gstfs_file_info *fi)
 {
     g_free(fi->filename);
@@ -64,6 +70,10 @@ void put_file_info(struct gstfs_file_info *fi)
     free(fi);
 }
 
+/*
+ *  Given a filename with extension "search", return a possibly reallocated
+ *  string with "replace" on the end.
+ */
 char *replace_ext(char *filename, char *search, char *replace)
 {
     char *ext = strrchr(filename, '.');
@@ -75,6 +85,9 @@ char *replace_ext(char *filename, char *search, char *replace)
     return filename;
 }
 
+/*
+ *  Return true if filename has extension dest_ext
+ */
 int is_target_type(const char *filename)
 {
     char *ext = strrchr(filename, '.');
@@ -140,6 +153,10 @@ out:
     return ret;
 }
 
+/*
+ *  Given a filename from the fuse mount, return the corresponding filename 
+ *  in the mirror.
+ */
 static char *get_source_path(const char *filename)
 {
     char *source;
