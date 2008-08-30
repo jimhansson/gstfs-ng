@@ -240,7 +240,7 @@ int gstfs_read(const char *path, char *buf, size_t size, off_t offset,
     pthread_mutex_lock(&info->mutex);
 
     if (!info->buf)
-        transcode(info->src_filename, read_cb, info);
+        transcode(mount_info.pipeline, info->src_filename, read_cb, info);
     
     if (info->len <= offset)
         goto out;

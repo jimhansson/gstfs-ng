@@ -31,16 +31,12 @@ void *send_pipe(void *data)
 /*
  *  Transcodes a file into a buffer, blocking until done.
  */
-int transcode(char *filename, void (*add_data_cb)(char *, size_t, void *),
-    void *user_data)
+int transcode(char *pipeline_str, char *filename, 
+    void (*add_data_cb)(char *, size_t, void *), void *user_data)
 {
     GstElement *pipeline, *source, *dest;
     GError *error = NULL;
     GstBus *bus;
-    char *pipeline_str = "filesrc name=\"_source\" ! oggdemux ! " 
-        "vorbisdec ! audioconvert ! lame bitrate=160 ! " 
-        "fdsink name=\"_dest\" sync=false";
-
     int pipefds[2];
 
     struct pipe_params thread_params;
