@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <unistd.h>
 #include <fuse.h>
 #include <errno.h>
 #include <glib.h>
@@ -180,6 +181,14 @@ static char *get_source_path(const char *filename)
     return source;
 }
 
+static char *canonize(const char *cwd, const char *filename)
+{
+    if (filename[0] == '/')
+        return g_strdup(filename);
+    else
+        return g_strdup_printf("%s/%s", cwd, filename);
+}
+
 int gstfs_statfs(const char *path, struct statvfs *buf)
 {
     char *source_path;
@@ -275,7 +284,7 @@ int gstfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
     source_path = get_source_path(path);
     dir = opendir(source_path);
- 
+
     if (!dir)
         return -ENOENT;
 
@@ -312,6 +321,7 @@ static struct fuse_opt gstfs_opts[] = {
 
 int main(int argc, char *argv[])
 {
+    char pwd[2048];
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 
     if (fuse_opt_parse(&args, &mount_info, gstfs_opts, NULL) == -1)
@@ -325,6 +335,14 @@ int main(int argc, char *argv[])
         usage(argv[0]);
         return -1;
     }
+
+    if (!getcwd(pwd, sizeof(pwd)))
+    {
+        perror("gstfs");
+        return -1;
+    }
+
+    mount_info.src_mnt = canonize(pwd, mount_info.src_mnt);
 
     if (mount_info.max_cache_entries == 0)
         mount_info.max_cache_entries = 50;

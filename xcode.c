@@ -78,7 +78,7 @@ int transcode(char *pipeline_str, char *filename,
     gst_bus_add_signal_watch(bus);
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
     GstMessage *message = gst_bus_poll(bus, GST_MESSAGE_EOS | 
-	    GST_MESSAGE_ERROR, -1);
+        GST_MESSAGE_ERROR, -1);
     gst_message_unref(message); 
 
     // close read-side so pipe will terminate
