@@ -12,8 +12,10 @@ filesrc with the name "_source" and end with an fdsink with the name "_dest".
 The filesystem will automatically substitute the filename and fd number in
 these pipelines.
 
+
 Usage
 ~~~~~
+
 The example shell script mp32wav.sh is illustrative (pretend it's all on one 
 line):
 
@@ -32,6 +34,7 @@ Once mounted, the first read of a file will transcode it, blocking until
 transcoding is complete.  The transcoded data is cached in memory for 
 subsequent reads.
 
+
 Mount Options
 ~~~~~~~~~~~~~
 
@@ -42,3 +45,10 @@ GSTFS currently recognizes the following mount options:
     dst_ext: Target format file extension
     pipeline: gstreamer conversion pipeline
     ncache: number of files to cache in memory (default: 50)
+
+
+License
+~~~~~~~
+
+GSTFS is licensed under the LGPL so that it may be used with any set of
+gstreamer plugins.  See the COPYING file for details.
