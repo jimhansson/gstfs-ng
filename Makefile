@@ -1,6 +1,6 @@
 VERSION=0.1
 DISTNAME=gstfs-$(VERSION)
-DISTFILES=*.[ch] Makefile README COPYING
+DISTFILES=*.[ch] *.sh Makefile README COPYING
 
 SRCS=gstfs.c xcode.c
 OBJS=$(SRCS:.c=.o)
