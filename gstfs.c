@@ -251,24 +251,13 @@ int gstfs_read(const char *path, char *buf, size_t size, off_t offset,
     if (!info)
         return -ENOENT;
 
-    pthread_mutex_lock(&info->mutex);
-
-    if (!info->buf)
-    {
-        /* resetting length to 0 so that transcode appends from beginning */
-        info->len = 0;
-        transcode(mount_info.pipeline, info->src_filename, read_cb, info);
-    }
-    
     if (info->len <= offset)
-        goto out;
+        return count;
 
     count = min(info->len - offset, size);
 
     memcpy(buf, &info->buf[offset], count);
 
-out:
-    pthread_mutex_unlock(&info->mutex);
     return count;
 }
 
@@ -278,6 +267,17 @@ int gstfs_open(const char *path, struct fuse_file_info *fi)
     if (!info)
         return -ENOENT;
 
+    pthread_mutex_lock(&info->mutex);
+
+    if (!info->buf)
+    {
+        /* resetting length to 0 so that transcode appends from beginning */
+        info->len = 0;
+        transcode(mount_info.pipeline, info->src_filename, read_cb, info);
+    }
+    
+    pthread_mutex_unlock(&info->mutex);
+    
     return 0;
 }
 
