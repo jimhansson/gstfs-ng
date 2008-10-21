@@ -71,6 +71,11 @@ struct gstfs_file_info *get_file_info(const char *filename)
     fi = calloc(1, sizeof(struct gstfs_file_info));
     fi->filename = g_strdup(filename);
     fi->src_filename = get_source_path(filename);
+    /* Non zero size is needed to prevent 'cp' from using shortcut for copying
+     * file by creating zero destination file without actually reading
+     * anything
+     */
+    fi->len = -1;
     pthread_mutex_init(&fi->mutex, NULL);
     return fi;
 }
@@ -249,7 +254,11 @@ int gstfs_read(const char *path, char *buf, size_t size, off_t offset,
     pthread_mutex_lock(&info->mutex);
 
     if (!info->buf)
+    {
+        /* resetting length to 0 so that transcode appends from beginning */
+        info->len = 0;
         transcode(mount_info.pipeline, info->src_filename, read_cb, info);
+    }
     
     if (info->len <= offset)
         goto out;
