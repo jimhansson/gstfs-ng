@@ -130,8 +130,18 @@ static void expire_cache()
            mount_info.max_cache_entries)
     {
         fi = (struct gstfs_file_info *) g_queue_pop_head(mount_info.cache_lru);
-        g_hash_table_remove(mount_info.file_cache, fi);
-        put_file_info(fi);
+        if (pthread_mutex_trylock(&fi->mutex) == EBUSY)  {
+            /* file is opened, move it to the end of cache lru */
+            if (fi->list_node)
+                g_queue_unlink(mount_info.cache_lru, fi->list_node);
+
+            g_queue_push_tail(mount_info.cache_lru, fi);
+            fi->list_node = mount_info.cache_lru->tail;
+        } else {
+            g_hash_table_remove(mount_info.file_cache, fi->filename);
+            pthread_mutex_unlock(&fi->mutex);
+            put_file_info(fi);
+        }
     }
 }
 
@@ -228,7 +238,7 @@ static int read_cb(char *buf, size_t size, void *data)
     struct gstfs_file_info *info = (struct gstfs_file_info *) data;
 
     size_t newsz = info->len + size;
-   
+
     if (info->alloc_len < newsz)
     {
         info->alloc_len = max(info->alloc_len * 2, newsz);
@@ -251,13 +261,17 @@ int gstfs_read(const char *path, char *buf, size_t size, off_t offset,
     if (!info)
         return -ENOENT;
 
+    pthread_mutex_lock(&info->mutex);
+
     if (info->len <= offset)
-        return count;
+        goto out;
 
     count = min(info->len - offset, size);
 
     memcpy(buf, &info->buf[offset], count);
 
+out:
+    pthread_mutex_unlock(&info->mutex);
     return count;
 }
 
@@ -275,9 +289,9 @@ int gstfs_open(const char *path, struct fuse_file_info *fi)
         info->len = 0;
         transcode(mount_info.pipeline, info->src_filename, read_cb, info);
     }
-    
+
     pthread_mutex_unlock(&info->mutex);
-    
+
     return 0;
 }
 
