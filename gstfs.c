@@ -114,6 +114,20 @@ int is_target_type(const char *filename)
     return (ext && strcmp(ext+1, mount_info.dst_ext) == 0);
 }
 
+/*
+ * Moves file info structure to the tail of cache_lru
+ *
+ *  Called with cache_mutex held.
+ */
+void refresh_cache(struct gstfs_file_info *fi)
+{
+    if (fi->list_node)
+        g_queue_unlink(mount_info.cache_lru, fi->list_node);
+
+    g_queue_push_tail(mount_info.cache_lru, fi);
+    fi->list_node = mount_info.cache_lru->tail;
+}
+
 /*  
  *  Remove items from the file cache until below the maximum.
  *  This is relatively quick since we can find elements by looking at the
@@ -130,13 +144,10 @@ static void expire_cache()
            mount_info.max_cache_entries)
     {
         fi = (struct gstfs_file_info *) g_queue_pop_head(mount_info.cache_lru);
-        if (pthread_mutex_trylock(&fi->mutex) == EBUSY)  {
+        if (pthread_mutex_trylock(&fi->mutex) == EBUSY)
+        {
             /* file is opened, move it to the end of cache lru */
-            if (fi->list_node)
-                g_queue_unlink(mount_info.cache_lru, fi->list_node);
-
-            g_queue_push_tail(mount_info.cache_lru, fi);
-            fi->list_node = mount_info.cache_lru->tail;
+            refresh_cache(fi);
         } else {
             g_hash_table_remove(mount_info.file_cache, fi->filename);
             pthread_mutex_unlock(&fi->mutex);
@@ -170,11 +181,7 @@ static struct gstfs_file_info *gstfs_lookup(const char *path)
     }
 
     // move to end of LRU
-    if (ret->list_node)
-        g_queue_unlink(mount_info.cache_lru, ret->list_node);
-
-    g_queue_push_tail(mount_info.cache_lru, ret);
-    ret->list_node = mount_info.cache_lru->tail;
+    refresh_cache(ret);
 
     expire_cache();
 
