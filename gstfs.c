@@ -165,9 +165,19 @@ static void expire_cache()
 static struct gstfs_file_info *gstfs_lookup(const char *path)
 {
     struct gstfs_file_info *ret;
+    char *source_path;
 
-    if (!is_target_type(path))
+    source_path = get_source_path(path);
+
+    /*
+     * either the file is not to be transcoded or original is actually
+     * transcoded already
+     */
+    if (!is_target_type(path) || is_target_type(source_path))
+    {
+        g_free(source_path);
         return NULL;
+    }
 
     pthread_mutex_lock(&mount_info.cache_mutex);
     ret = g_hash_table_lookup(mount_info.file_cache, path);
@@ -186,6 +196,7 @@ static struct gstfs_file_info *gstfs_lookup(const char *path)
     expire_cache();
 
 out:
+    g_free(source_path);
     pthread_mutex_unlock(&mount_info.cache_mutex);
     return ret;
 }
@@ -197,9 +208,12 @@ out:
 static char *get_source_path(const char *filename)
 {
     char *source;
+    struct stat stbuf;
 
     source = g_strdup_printf("%s%s", mount_info.src_mnt, filename);
-    source = replace_ext(source, mount_info.dst_ext, mount_info.src_ext);
+    /* if file exists in source directory we leave original extension */
+    if (stat(source, &stbuf))
+        source = replace_ext(source, mount_info.dst_ext, mount_info.src_ext);
     return source;
 }
 
@@ -259,6 +273,30 @@ static int read_cb(char *buf, size_t size, void *data)
     return 0;
 }
 
+/*
+ * Reads part of file from source mountpoint
+ *
+ */
+int gstfs_read_srcfile(const char *path, char *buf, size_t size, off_t offset)
+{
+    int fd;
+    int readsize = -EINVAL;
+
+    fd = open(path, O_RDONLY);
+    if (fd == -1)
+        return -EBADF;
+
+    if(lseek(fd, offset, SEEK_SET) == offset)
+    {
+        readsize = read(fd, buf, size);
+        if (readsize == -1)
+            readsize = -errno;
+    }
+
+    close(fd);
+    return readsize;
+}
+
 int gstfs_read(const char *path, char *buf, size_t size, off_t offset, 
     struct fuse_file_info *fi)
 {
@@ -266,7 +304,13 @@ int gstfs_read(const char *path, char *buf, size_t size, off_t offset,
     size_t count = -EINVAL;
 
     if (!info)
-        return -ENOENT;
+    {
+        char *source_path;
+        source_path = get_source_path(path);
+        count = gstfs_read_srcfile(source_path, buf, size, offset);
+        g_free(source_path);
+        return count;
+    }
 
     pthread_mutex_lock(&info->mutex);
 
@@ -282,11 +326,41 @@ out:
     return count;
 }
 
+/*
+ * Tries to open given file (expected to be from source mountpoint)
+ *
+ */
+int gstfs_open_srcfile(const char *path)
+{
+    struct stat stbuf;
+    int ret = 0;
+    int fd;
+
+    if (stat(path, &stbuf))
+        ret = -ENOENT;
+
+    fd = open(path, O_RDONLY);
+    if (fd != -1)
+        close(fd);
+    else
+        ret = -errno;
+    return ret;
+}
+
+
 int gstfs_open(const char *path, struct fuse_file_info *fi)
 {
     struct gstfs_file_info *info = gstfs_lookup(path);
+
     if (!info)
-        return -ENOENT;
+    {
+        char *source_path;
+        int ret;
+        source_path = get_source_path(path);
+        ret = gstfs_open_srcfile(source_path);
+        g_free(source_path);
+        return ret;
+    }
 
     pthread_mutex_lock(&info->mutex);
 
