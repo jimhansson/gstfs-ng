@@ -1,5 +1,14 @@
 GSTFS, a gstreamer-based transcoding FUSE filesystem
-Bob Copeland <me@bobcopeland.com>
+
+
+Homepage: http://code.google.com/p/gstfs/
+
+Developers: Stanislav Ochotnicky <stanislav@ochotnicky.com>
+            Felipe Contreras <felipe.contreras@gmail.com>
+
+Orignal author: Bob Copeland <me@bobcopeland.com>
+
+
 
 Introduction
 ~~~~~~~~~~~~
