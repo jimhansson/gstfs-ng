@@ -427,6 +427,7 @@ int main(int argc, char *argv[])
 {
     char pwd[2048];
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+    struct stat stbuf;
 
     if (fuse_opt_parse(&args, &mount_info, gstfs_opts, NULL) == -1)
         return -1;
@@ -447,6 +448,17 @@ int main(int argc, char *argv[])
     }
 
     mount_info.src_mnt = canonize(pwd, mount_info.src_mnt);
+    if (stat(mount_info.src_mnt, &stbuf) == -1)
+    {
+        perror("gstfs: source directory:");
+        return -1;
+    }
+
+    if(!S_ISDIR(stbuf.st_mode))
+    {
+        fprintf(stderr, "gstfs: source path is not directory\n");
+        return -1;
+    }
 
     if (mount_info.max_cache_entries == 0)
         mount_info.max_cache_entries = 50;
