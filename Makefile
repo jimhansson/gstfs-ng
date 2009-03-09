@@ -1,6 +1,6 @@
 VERSION=0.2a
 DISTNAME=gstfs-$(VERSION)
-DISTFILES=*.[ch] *.sh Makefile README COPYING
+DISTFILES=*.[ch] examples/ Makefile README COPYING
 
 SRCS=gstfs.c xcode.c
 OBJS=$(SRCS:.c=.o)
@@ -19,7 +19,7 @@ clean:
 
 dist: clean
 	mkdir $(DISTNAME)
-	cp $(DISTFILES) $(DISTNAME)
+	cp -R $(DISTFILES) $(DISTNAME)
 	tar czvf $(DISTNAME).tar.gz $(DISTNAME)
 	$(RM) -r $(DISTNAME)
 
