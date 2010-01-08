@@ -1,4 +1,4 @@
-VERSION=0.1
+VERSION=0.2a
 DISTNAME=gstfs-$(VERSION)
 DISTFILES=*.[ch] examples/ Makefile README COPYING
 
