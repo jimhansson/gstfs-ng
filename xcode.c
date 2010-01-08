@@ -31,7 +31,7 @@ void *send_pipe(void *data)
 /*
  *  Transcodes a file into a buffer, blocking until done.
  */
-int transcode(char *pipeline_str, char *filename, 
+int gstfs_transcode(char *pipeline_str, char *filename, 
     void (*add_data_cb)(char *, size_t, void *), void *user_data)
 {
     GstElement *pipeline, *source, *dest;

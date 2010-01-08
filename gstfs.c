@@ -368,7 +368,7 @@ int gstfs_open(const char *path, struct fuse_file_info *fi)
     {
         /* resetting length to 0 so that transcode appends from beginning */
         info->len = 0;
-        transcode(mount_info.pipeline, info->src_filename, read_cb, info);
+        gstfs_transcode(mount_info.pipeline, info->src_filename, read_cb, info);
     }
 
     pthread_mutex_unlock(&info->mutex);
