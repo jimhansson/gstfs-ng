@@ -406,7 +406,19 @@ int gstfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     return 0;
 }
 
+int gstfs_access(const char *path, int mode)
+{
+    char *source_path;
+    int ret;
+
+    source_path = get_source_path(path);
+    ret = access(source_path, mode);
+    g_free(source_path);
+    return ret;
+}
+
 static struct fuse_operations gstfs_opers = {
+    .access = gstfs_access,
     .readdir = gstfs_readdir,
     .statfs = gstfs_statfs,
     .getattr = gstfs_getattr,

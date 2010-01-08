@@ -1,20 +1,22 @@
 # -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-AC_PREREQ([2.64])
+AC_PREREQ([2.63])
 AC_INIT(gstfs, 0.2a, sochotnicky@gmail.com)
 AM_INIT_AUTOMAKE
 
 AC_CONFIG_HEADERS([config.h])
 
 AM_PROG_CC_C_O
+ifdef([GNOME_COMPILE_WARNINGS],[GNOME_COMPILE_WARNINGS],)
+CFLAGS="$CFLAGS $WARN_CFLAGS"
 
 # Checks for programs.
 
 # Checks for libraries.
 PKG_CHECK_MODULES(glib,  glib-2.0 >= 2.0)
 PKG_CHECK_MODULES(fuse,  fuse >= 2.7)
-PKG_CHECK_MODULES(gstreamer, gstreamer-0.10 >= 0.10.25)
+PKG_CHECK_MODULES(gstreamer, gstreamer-0.10 >= 0.10.1)
 
 # Checks for header files.
 AC_CHECK_HEADERS([stdlib.h string.h unistd.h dirent.h])
