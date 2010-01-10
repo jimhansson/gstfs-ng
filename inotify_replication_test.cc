@@ -6,8 +6,6 @@
 
 #include <gtest/gtest.h>
 
-
-
 /**
  * this black box test should only be a driver and use a real gstfs
  * process, so we will set it up here in this fixture

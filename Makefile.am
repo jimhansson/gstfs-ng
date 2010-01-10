@@ -1,5 +1,5 @@
 
-bin_PROGRAMS = gstfs
+bin_PROGRAMS = gstfs inotify_replication_test
 gstfs_SOURCES = xcode.c gstfs.c
 
 gstfs_CPPFLAGS = \
@@ -14,6 +14,15 @@ gstfs_LDFLAGS= \
 	$(glib_LIBS) \
 	$(gstreamer_LIBS) \
 	-lpthread
+
+inotify_replication_test_SOURCES = \
+	inotify_replication_test.cc
+
+inotify_replication_test_CPPFLAGS = \
+	$(gtest_CFLAGS)
+
+inotify_replication_test_LDFLAGS = \
+	$(gtest_LIBS)
 
 # old targets 
 

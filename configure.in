@@ -7,6 +7,7 @@ AM_INIT_AUTOMAKE
 
 AC_CONFIG_HEADERS([config.h])
 
+AC_PROG_CXX(g++)
 AM_PROG_CC_C_O
 
 # Checks for programs.
@@ -25,6 +26,21 @@ AC_TYPE_SIZE_T
 
 # Checks for library functions.
 
+# Ask user for path to gtest stuff
+AC_ARG_WITH(gtest,                                                               
+    [ --with-gtest=<path> prefix of gtest installation. e.g. /usr/local or /usr] 
+,                                                                                
+    [gtest_PREFIX=$with_gtest],                                                  
+    AC_MSG_ERROR([You must call configure with the --with-gtest option.          
+    This tells configure where to find the google test library and headers.      
+    e.g. --with-gtest=/usr/local or --with-gtest=/usr])                          
+)                                                                                
+                                                                                 
+AC_SUBST(gtest_PREFIX)                                                           
+gtest_LIBS="-L${GTEST_PREFIX}/lib -lgtest_main" 
+gtest_CFLAGS="-I${GTEST_PREFIX}/include"                                         
+AC_SUBST(gtest_LIBS)                                                             
+AC_SUBST(gtest_CFLAGS)
 
 #AC_PROG_RANLIB([libtool])
 AC_CONFIG_FILES([Makefile])
