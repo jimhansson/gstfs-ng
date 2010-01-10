@@ -34,5 +34,25 @@ public:
   }
 };
 
+TEST_F(black_box_inotify_test,CREATED) {
+  //
+}
+
+TEST_F(black_box_inotify_test,DELETED) {
+  //
+}
+
+TEST_F(black_box_inotify_test,CLOSE_WRITE) {
+  //this is so we discover download program that batches its writes to files
+}
+
+TEST_F(black_box_inotify_test,MOVED_TO) {
+  //Moved to should result in a created
+}
+
+TEST_F(black_box_inotify_test,MOVED_FROM) {
+  //Moved from should result in a deleted
+}
+
 
 
